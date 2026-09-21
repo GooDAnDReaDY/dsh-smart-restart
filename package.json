@@ -1,5 +1,5 @@
 {
-  "name": "@goodandready/dsh-restart-guard",
+  "name": "@goodandready/dsh-smart-restart",
   "version": "0.1.0",
   "description": "Verified restart for DeepSeek Harness: restart without privileges, check that the harness really came back, report the verdict to the session that asked, and hand back what was left to do.",
   "license": "MIT",
@@ -61,11 +61,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GooDAnDReaDY/dsh-restart-guard.git"
+    "url": "git+https://github.com/GooDAnDReaDY/dsh-smart-restart.git"
   },
-  "homepage": "https://github.com/GooDAnDReaDY/dsh-restart-guard#readme",
+  "homepage": "https://github.com/GooDAnDReaDY/dsh-smart-restart#readme",
   "bugs": {
-    "url": "https://github.com/GooDAnDReaDY/dsh-restart-guard/issues"
+    "url": "https://github.com/GooDAnDReaDY/dsh-smart-restart/issues"
   },
   "publishConfig": {
     "access": "public"

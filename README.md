@@ -1,4 +1,4 @@
-# @goodandready/dsh-restart-guard
+# @goodandready/dsh-smart-restart
 
 **A restart that is verified, not announced.** The agent restarts DeepSeek Harness, and when the
 process comes back this plugin checks that everything is really up, reports the verdict into the
@@ -36,7 +36,7 @@ This plugin closes both gaps and needs no privileges.
 ## Install
 
 ```bash
-dsh plugin --profile <profile> add @goodandready/dsh-restart-guard
+dsh plugin --profile <profile> add @goodandready/dsh-smart-restart
 ```
 
 Requires a systemd-managed harness (`dsh-web.service` or any unit with `Restart=always`) for the
@@ -69,7 +69,7 @@ default mode; the unit is detected from the process cgroup, and can be set expli
 ## What the report looks like
 
 ```
-restart-guard: the harness restarted and the boot check passed.
+smart-restart: the harness restarted and the boot check passed.
 - boot: 2026-09-21T20:41:12.004Z (was down 6.2s, pid 12345)
 - ok services: webServer, tools, agents, settings
 - ok tools: 61 registered

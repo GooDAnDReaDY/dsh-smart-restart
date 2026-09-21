@@ -1,6 +1,7 @@
-# dsh-restart-guard bundle layer: inserts the plugin row into the profile's loader tree. Applied
-# automatically because package.json declares `dsh.bundle.patch`.
+# dsh-smart-restart bundle layer: inserts the plugin row into the profile's loader tree. Applied
+# automatically because package.json declares `dsh.bundle.patch`. The row id is ours alone, so it
+# cannot collide with the unrelated third-party plugin that uses the same short package name.
 - insert:
-    - id: dsh-restart-guard
-      name: '@goodandready/dsh-restart-guard'
+    - id: goodandready-smart-restart
+      name: '@goodandready/dsh-smart-restart'
       config: {}

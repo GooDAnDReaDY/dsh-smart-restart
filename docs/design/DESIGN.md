@@ -1,4 +1,4 @@
-# DESIGN — dsh-restart-guard
+# DESIGN — dsh-smart-restart
 
 ## 1. Задача
 

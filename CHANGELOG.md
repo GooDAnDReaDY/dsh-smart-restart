@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to `@goodandready/dsh-restart-guard`.
+Notable changes to `@goodandready/dsh-smart-restart`.
 
 ## 0.1.0
 

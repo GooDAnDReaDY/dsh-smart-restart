@@ -10,6 +10,8 @@ import {
   ownerBelongsToUnit,
   parseCgroupUnit,
   parsePortOwner,
+  parseListenPortsForPid,
+  unitScopeFromCgroup,
 } from '../lib/boot.js'
 
 test('a different pid is a restart, the same pid is not', () => {
@@ -141,4 +143,22 @@ test('an intent older than its TTL is marked stale rather than presented as curr
   assert.equal(old.stale, true)
 
   assert.deepEqual(intentState(null, { now }), { present: false, stale: false })
+})
+
+test('a user unit is recognised, so it is inspected in the user manager', () => {
+  assert.equal(unitScopeFromCgroup('0::/system.slice/dsh-web.service'), 'system')
+  assert.equal(unitScopeFromCgroup('0::/user.slice/user-1000.slice/user@1000.service/app.slice/dsh-test-web.service'), 'user')
+  assert.equal(unitScopeFromCgroup(''), 'system')
+})
+
+test('the ports we serve are found from our own pid', () => {
+  const output = [
+    'State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process',
+    'LISTEN 0      511    127.0.0.1:3080      0.0.0.0:*    users:(("MainThread",pid=4242,fd=21))',
+    'LISTEN 0      511    127.0.1.1:3080      0.0.0.0:*    users:(("MainThread",pid=4242,fd=47))',
+    'LISTEN 0      511    127.0.0.1:3082      0.0.0.0:*    users:(("MainThread",pid=9,fd=21))',
+  ].join('\n')
+  assert.deepEqual(parseListenPortsForPid(output, 4242), [3080, 3080])
+  assert.deepEqual(parseListenPortsForPid(output, 7), [])
+  assert.deepEqual(parseListenPortsForPid('', 4242), [])
 })
