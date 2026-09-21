@@ -1,0 +1,6 @@
+# dsh-restart-guard bundle layer: inserts the plugin row into the profile's loader tree. Applied
+# automatically because package.json declares `dsh.bundle.patch`.
+- insert:
+    - id: dsh-restart-guard
+      name: '@goodandready/dsh-restart-guard'
+      config: {}
