@@ -3,6 +3,7 @@
 Notable changes to `@goodandready/dsh-smart-restart`.
 
 ## 0.1.0
+Fixed web client loader compatibility: the lazy CommonJS factory now defines and returns its exports, so DSH can load the settings card without a module is not defined error.
 
 First release: a restart that is verified instead of announced.
 
