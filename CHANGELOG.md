@@ -2,6 +2,14 @@
 
 Notable changes to `@goodandready/dsh-smart-restart`.
 
+## 0.1.1
+- Settings precedence: `live()` now correctly merges saved `settingsScope` on top of defaults, ensuring configuration updates apply dynamically (#2).
+- Systemd user unit restart: added `--user` flag to `systemctl restart` when running in a user cgroup slice (#3).
+- Lifecycle cleanup: bound tool registrations and background timers to Cordis 4 `ctx.effect` with an explicit disposer to prevent leaks across host reloads (#6).
+- Canonical slot registration: registered `settings.plugin.item` with `key: NS` and `locale: NS`, removed hardcoded CSS colors, and added snapshot status handling (#7).
+- Updater contract: documented that the plugin is managed via DSH package manager (CLI/pnpm) and verifies compatibility on post-update restart (#8).
+- Release sanitization: confirmed package allowlist in `package.json` keeps tests and internal design docs out of published artifacts (#9).
+
 ## 0.1.0
 Fixed web client loader compatibility: the lazy CommonJS factory now defines and returns its exports, so DSH can load the settings card without a module is not defined error.
 
