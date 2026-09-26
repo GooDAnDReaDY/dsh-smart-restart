@@ -123,6 +123,8 @@ resume: continue the recorded task and report the result
 - The kill mode loses the in-flight turn by design; the intent file is what makes the next turn
   meaningful.
 - The port and cgroup checks are Linux-specific and degrade to "not checked" elsewhere.
+- The plugin is managed via the DSH package manager (CLI/pnpm); a standalone /api/dsh/update route is intentionally not hosted, and updates are verified by post-boot health checks upon restart.
+- For systemd user units, the --user flag is automatically applied to both status inspection and systemctl restart.
 
 ## Troubleshooting
 

@@ -89,6 +89,8 @@ dsh plugin --profile web add @goodandready/dsh-smart-restart
 - 默认模式依赖 systemd 的 Restart=always。手动启动的独立进程无法自行恢复，插件会明确报告这一限制。
 - kill 模式会结束当前执行轮次；保存的意图用于为下一轮提供上下文。
 - 端口和 cgroup 检查面向 Linux；其他系统会跳过这些检查。
+- 插件由 DSH 包管理器 (CLI/pnpm) 统一管理；本插件不提供独立的 /api/dsh/update 路由，更新会在重启后由内置 health-check 验证。
+- 对于 systemd 用户单元，--user 标志会在状态检查和 systemctl restart 中自动传递。
 - 如果 DSH 报告客户端导入失败并提示 module is not defined，说明客户端加载工厂不兼容。请使用定义并返回 CommonJS 导出的版本，再重新加载 web profile。
 - 宿主端工具可能正常，而浏览器设置卡片仍失败；请分别检查客户端模块启动错误。
 

@@ -12,6 +12,7 @@ import {
   parsePortOwner,
   parseListenPortsForPid,
   unitScopeFromCgroup,
+  systemctlRestartArgs,
 } from '../lib/boot.js'
 
 test('a different pid is a restart, the same pid is not', () => {
@@ -161,4 +162,10 @@ test('the ports we serve are found from our own pid', () => {
   assert.deepEqual(parseListenPortsForPid(output, 4242), [3080, 3080])
   assert.deepEqual(parseListenPortsForPid(output, 7), [])
   assert.deepEqual(parseListenPortsForPid('', 4242), [])
+})
+
+test('systemctl restart args includes --user for user units and bare for system', () => {
+  assert.deepEqual(systemctlRestartArgs('dsh.service', 'system'), ['restart', 'dsh.service'])
+  assert.deepEqual(systemctlRestartArgs('dsh-test.service', 'user'), ['--user', 'restart', 'dsh-test.service'])
+  assert.deepEqual(systemctlRestartArgs(''), [])
 })
