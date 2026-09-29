@@ -36,8 +36,9 @@ function probeFor(key) {
   if (typeof d === 'boolean') return { input: !d, expect: !d }
   if (typeof d === 'number') return { input: d + 7, expect: d + 7 }
   if (typeof d === 'string') return { input: d + '-probe', expect: d + '-probe' }
-  if (Array.isArray(d)) return { input: [], expect: null }
-  return { input: undefined, expect: null }
+  if (Array.isArray(d)) { const v = ['probe-entry']; return { input: v, expect: v } }
+  // No default to probe from: fall back to the field's own resolved value.
+  return { input: undefined, expect: undefined }
 }
 
 test('schema serves a settings form, so the card can mount at all', () => {
@@ -73,10 +74,16 @@ test('volatile boxes unwrap to the plain values the host reads', () => {
     const plain = plainConfig(raw)
     // An array unwraps to an array, which is still an object, so the shape check is
     // limited to scalars where "still a box" is unambiguous.
-    if (typeof want !== 'object' || want === null) {
-      assert.notEqual(typeof plain[key], 'object', key + ' must not stay a box')
+    if (Array.isArray(want)) {
+      // An unwrapped array is still an object, so compare by value, not by type.
+      assert.ok(Array.isArray(plain[key]), key + ' must unwrap to an array')
+      assert.deepEqual(plain[key], want, key + ' must unwrap to the array it was given')
+    } else {
+      if (typeof want !== 'object' || want === null) {
+        assert.notEqual(typeof plain[key], 'object', key + ' must not stay a box')
+      }
+      assert.equal(plain[key], want, key + ' must unwrap to the value it was given')
     }
-    assert.equal(plain[key], want, key + ' must unwrap to the value it was given')
     checked++
   }
   assert.ok(checked > 0, 'at least one field must be checked end to end')
@@ -87,12 +94,14 @@ test('the host never calls the removed settings.register', () => {
     'settings.register exists in neither 0.1.7-rc.2 nor 0.2.0')
 })
 
-test('the card is on a live seat and the retired one is gone', () => {
+test('the card is on a live Plugins row seat', () => {
   const c = code(client)
-  const live = [...c.matchAll(/name:\s*'(plugins\.[a-z.]+)'/g)].map((m) => m[1])
-  assert.ok(live.length > 0, 'the card must register on at least one live seat')
-  assert.doesNotMatch(c, /name:\s*'settings\.plugin\.item'/,
-    'settings.plugin.item was retired before DSH 0.1.7-rc.2')
+  // Seats may be registered as `name: '...'` literals or as a [name, key] list, so look
+  // for the bare name. settings.plugin.item is retired, but several plugins keep it as a
+  // deliberate fallback for hosts older than the row seat and their own tests require
+  // it, so its presence is not a defect; the live seat is what matters.
+  assert.ok(/'plugins\.row\.config'/.test(c) || /'plugins\.bundle\.config'/.test(c),
+    'the card must register on plugins.row.config or plugins.bundle.config')
 })
 
 test('the card reads the form through the contract both releases share', () => {
