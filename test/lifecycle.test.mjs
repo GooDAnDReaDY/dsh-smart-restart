@@ -10,21 +10,25 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
   let effectDisposer
   let toolDisposed = false
 
+  // The settings service as DSH 0.1.7-rc.2 and 0.2.0 both ship it: no register(),
+  // and card writes land in the entry config, which the Loader re-merges in place
+  // and announces with loader/volatile-update.
   let storedSettings = { enabled: false, restartMode: 'systemctl', delayMs: 7000 }
+  let onVolatileUpdate = null
 
   const mockCtx = {
+    on(event, handler) {
+      if (event === 'loader/volatile-update') onVolatileUpdate = handler
+      return () => {}
+    },
     inject(deps, cb) {
       if (deps.includes('settings')) {
         settingsCallback = cb
         cb({
           settings: {
-            register(ns, schema, opts) {
-              return {
-                get: () => storedSettings,
-                set: (patch) => Object.assign(storedSettings, patch),
-                status: () => 'ready'
-              }
-            }
+            // If this plugin ever calls register(), it does not exist in either
+            // release, so the mock must fail loudly rather than paper over it.
+            register() { throw new Error('settings.register does not exist on DSH 0.1.7 or 0.2.0') }
           }
         })
       }
@@ -62,10 +66,13 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
   assert.equal(restartResult.ok, false)
   assert.match(restartResult.error, /disabled in settings/)
 
-  // Change storedSettings to enabled: true, mode: systemctl
+  // Change storedSettings to enabled: true, mode: systemctl, then announce it the
+  // way the Loader does after re-merging the volatile entry config.
   storedSettings.enabled = true
   storedSettings.unit = 'my-test.service'
   storedSettings.maxRestarts = 100
+  assert.equal(typeof onVolatileUpdate, 'function', 'host must listen for loader/volatile-update')
+  onVolatileUpdate()
   const restartAllowed = await restartTool.execute({ confirm: true }, { sessionId: 's1' })
   assert.equal(restartAllowed.ok, true)
   assert.equal(restartAllowed.restarting, true)
@@ -76,7 +83,7 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
   assert.equal(toolDisposed, true)
 })
 
-test('client slots register canonical settings.plugin.item with key and locale', async () => {
+test('client slots register the live seats and not the retired one', async () => {
   const source = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let entry
   const window = {
@@ -108,8 +115,16 @@ test('client slots register canonical settings.plugin.item with key and locale',
 
   pluginExports.apply(mockClientCtx)
 
-  const settingsSlot = registeredSlots.find((s) => s.slotEntry.name === 'settings.plugin.item')
-  assert.ok(settingsSlot, 'settings.plugin.item should be registered')
-  assert.equal(settingsSlot.slotEntry.key, 'dsh-smart-restart')
-  assert.equal(settingsSlot.slotEntry.locale, 'dsh-smart-restart')
+  // settings.plugin.item was retired before DSH 0.1.7-rc.2: one occurrence in the
+  // whole 0.1.7-rc.2 tree against 54 of plugins.item. The card now sits on the
+  // two seats both releases ship, and the namespace is the profile entry id
+  // (goodandready-smart-restart), not the package name.
+  const seats = registeredSlots.map((s) => s.slotEntry.name)
+  assert.ok(seats.includes('plugins.item'), 'plugins.item should be registered')
+  assert.ok(!seats.includes('settings.plugin.item'), 'the retired seat must not be registered')
+
+  const rowSlot = registeredSlots.find((s) => s.slotEntry.name === 'plugins.row.config')
+  assert.ok(rowSlot, 'plugins.row.config should be registered')
+  assert.equal(rowSlot.slotEntry.key, 'goodandready-smart-restart', 'namespace is the profile entry id')
+  assert.equal(rowSlot.slotEntry.locale, 'goodandready-smart-restart')
 })
