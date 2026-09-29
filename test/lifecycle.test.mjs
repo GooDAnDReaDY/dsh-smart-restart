@@ -1,20 +1,30 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { apply } from '../lib/index.js'
 
-test('live() settings precedence: saved settingsScope overrides defaults and rawConfig', async () => {
+test('live() reads the entry config, so a card save reaches the running guard', async () => {
   let settingsCallback
   const registeredTools = []
   let effectDisposer
   let toolDisposed = false
 
-  // The settings service as DSH 0.1.7-rc.2 and 0.2.0 both ship it: no register(),
-  // and card writes land in the entry config, which the Loader re-merges in place
-  // and announces with loader/volatile-update.
-  let storedSettings = { enabled: false, restartMode: 'systemctl', delayMs: 7000 }
+  // The settings service as DSH 0.1.7-rc.2 and 0.2.0 both ship it: no register().
+  // The Loader re-merges the SAME entry config object in place and announces it
+  // with loader/volatile-update — that is why live() reads the config apply() got,
+  // rather than a separate stored-settings object.
   let onVolatileUpdate = null
+  // An isolated state dir: the guard persists a restart history, and reusing the
+  // default one let history leak between runs until the window limit refused every
+  // restart. A test that passes once and fails the next time is not a test.
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-'))
+  const entryConfig = {
+    enabled: false, restartMode: 'systemctl', delayMs: 7000, stateDir,
+    windowMs: 600000, maxRestarts: 50,
+  }
 
   const mockCtx = {
     on(event, handler) {
@@ -53,7 +63,7 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
     }
   }
 
-  const cleanup = apply(mockCtx, { delayMs: 3000, restartMode: 'kill' })
+  const cleanup = apply(mockCtx, entryConfig)
 
   assert.equal(typeof cleanup, 'function')
   assert.equal(typeof effectDisposer, 'function')
@@ -66,11 +76,11 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
   assert.equal(restartResult.ok, false)
   assert.match(restartResult.error, /disabled in settings/)
 
-  // Change storedSettings to enabled: true, mode: systemctl, then announce it the
-  // way the Loader does after re-merging the volatile entry config.
-  storedSettings.enabled = true
-  storedSettings.unit = 'my-test.service'
-  storedSettings.maxRestarts = 100
+  // Enable and switch mode, then announce the way the Loader does after re-merging
+  // the volatile entry config.
+  entryConfig.enabled = true
+  entryConfig.unit = 'my-test.service'
+  entryConfig.maxRestarts = 100
   assert.equal(typeof onVolatileUpdate, 'function', 'host must listen for loader/volatile-update')
   onVolatileUpdate()
   const restartAllowed = await restartTool.execute({ confirm: true }, { sessionId: 's1' })
@@ -81,6 +91,7 @@ test('live() settings precedence: saved settingsScope overrides defaults and raw
   // Disposing cleans up tools and active timers
   cleanup()
   assert.equal(toolDisposed, true)
+  await rm(stateDir, { recursive: true, force: true })
 })
 
 test('client slots register the live seats and not the retired one', async () => {
