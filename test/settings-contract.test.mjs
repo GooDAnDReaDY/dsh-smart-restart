@@ -148,3 +148,16 @@ test('peer ranges accept the 0.1.7 and 0.2.0 DSH package lines', async () => {
     assert.ok(semver.satisfies('0.1.7-rc.2', range), name + ' ' + range + ' must accept 0.1.7-rc.2')
   }
 })
+
+test('devDependencies satisfy matching peerDependencies ranges (#25)', async () => {
+  const pkg = JSON.parse(read('package.json'))
+  const semver = await import('semver')
+  for (const [name, peerRange] of Object.entries(pkg.peerDependencies || {})) {
+    const devRange = pkg.devDependencies && pkg.devDependencies[name]
+    if (devRange) {
+      const minDevVer = semver.minVersion(devRange)?.version
+      assert.ok(minDevVer, name + ' has valid devDependency version')
+      assert.ok(semver.satisfies(minDevVer, peerRange), name + ' dev ' + devRange + ' (min ' + minDevVer + ') satisfies peer ' + peerRange)
+    }
+  }
+})
