@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.8
+
+### Fixed
+- **DevDependencies upgraded to ^0.2.0-rc.2** (#25): `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, and `@deepseek-ai/dsh-home-paths` bumped to `^0.2.0-rc.2`, aligning dev toolchain with modern core APIs while preserving peer compatibility with `^0.1.7-rc.2 || ^0.2.0-rc.1`.
+- **Client settings form unavailable state handling** (#26): `RestartGuardCard` logs a warning when settings scope is missing, guards against null scope, and renders a localized unavailable notice (`unavailable`) instead of attempting unsaveable form interaction.
+- **Core chevron down icon request with graceful SVG fallback** (#27): client queries `IconChevronDownOutline14` from `@deepseek-ai/dsh-client-ui-primitives` adhering to DSH design guidelines, rotating 180° when open, with an inline SVG fallback if the primitive is unavailable.
+- **Cleaned up redundant title expression** (#28): eliminated dead ternary in client card header, cleanly referencing `t(title)`.
+- **Locale registration cleanup in ctx.effect** (#29): locale bundles (`en`, `zh`) are now registered within `ctx.effect`, returning the unregistration disposer to prevent lingering locale state on plugin reload.
+- **Theme design token alignment** (#30): replaced non-standard `--dsw-alias-label-error` with design token `var(--dsw-alias-state-error-primary)`.
+
 ## 0.1.7
 
 ### Fixed
