@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+### Fixed
+- **Settings unwrapping order (Unwrap → Validate → Unwrap)** (#24): apply() now unwraps rawConfig before Config() schema validation and unwraps the result, preventing Volatile box copy failures or fallbacks to schema defaults.
+- **Unified settings namespace in client seat registration** (#12): plugins.item seat registration now uses the bare host-plane namespace id: NS (goodandready-smart-restart), matching cordis.patch.yml and preventing composite key mismatches.
+- **Config form scope error logging** (#26): eliminated empty catch block during client-side config forms / settings scope resolution; errors are now logged via ctx.logger.warn.
+
 ## 0.1.4
 
 ### Fixed

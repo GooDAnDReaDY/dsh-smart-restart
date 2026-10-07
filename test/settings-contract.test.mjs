@@ -104,6 +104,24 @@ test('the card is on a live Plugins row seat', () => {
     'the card must register on plugins.row.config or plugins.bundle.config')
 })
 
+test('Unwrap -> Validate -> Unwrap handles pre-boxed volatile input without fallback', () => {
+  const boxedInput = {
+    restartMode: { get: () => 'systemctl' },
+    delayMs: { get: () => 7000 },
+  }
+  const result = plainConfig(Config(plainConfig(boxedInput)))
+  assert.equal(result.restartMode, 'systemctl')
+  assert.equal(result.delayMs, 7000)
+})
+
+test('plugins.item seat uses the bare host-plane namespace and not composite id', () => {
+  const c = code(client)
+  assert.doesNotMatch(c, /id:\s*'@goodandready\/dsh-smart-restart#dsh-restart-guard'/,
+    'plugins.item must not use the composite package#row id')
+  assert.match(c, /seat:\s*'plugins\.item',\s*entry:\s*\{\s*name:\s*'plugins\.item',\s*id:\s*NS/,
+    'plugins.item must use NS (bare host-plane namespace)')
+})
+
 test('the card reads the form through the contract both releases share', () => {
   const c = code(client)
   if (/configForms/.test(c)) {
