@@ -81,3 +81,17 @@
 Для сервисов, запущенных в пространстве пользователя (`/user.slice/`), команда
 `systemctl restart` автоматически дополняется флагом `--user`, аналогично проверке
 `checkUnit` (`systemctl --user show`).
+
+## 12. Контракт настроек DSH 0.2.0 (Unwrap → Validate → Unwrap)
+
+Поля схемы конфигурации Config объявлены как .volatile(), чтобы карточка настроек
+в DSH 0.2.0 обслуживалась ядром через динамические формы ConfigForm.
+При вызове apply(ctx, rawConfig) входящий объект конфигурации может содержать боксы Volatile,
+поэтому применяется строгая последовательность:
+1. plainConfig(rawConfig) распаковывает входящие боксы в плоские значения;
+2. Config(...) валидирует значения по схеме;
+3. plainConfig(...) разворачивает результат в validatedConfig.
+Динамическое чтение через live() производит plainConfig(entryConfig) на каждый запрос,
+отслеживая обновления формы Loader в реальном времени.
+Слот карточки в Plugin Manager регистрируется под единым хостовым namespace goodandready-smart-restart
+(id: NS для plugins.item и key: NS для plugins.row.config).
