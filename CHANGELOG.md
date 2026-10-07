@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.7
+
+### Fixed
+- **Boot marker version detection & readBoot integration** (#18, #31): `readBoot()` now populates `dshVersion` (from options or `process.env.DSH_VERSION`) and `pluginVersion`, and is invoked when writing `marker.json` to record the exact runtime versions that produced the boot marker.
+- **Post-restart report delivery for primary session** (#19): `resolveAgent()` now gracefully falls back to `ctx.agents.roots()[0]` or `ctx.agents.list()[0]` when `target: 'primary'` or when `sessionId` is empty, ensuring the restart verdict and resumed work are delivered.
+- **Intent preservation without session ID** (#20): `intentState()` now recognizes intents with recorded `reason` or `resume` even if no caller `sessionId` was resolved, and cleans up `intent.json` post-delivery so stale intents do not linger.
+- **Safe delivery retry ticks** (#21): wrapped timer ticks and agent delivery in `try/catch` and added error logging, preventing unhandled exceptions from terminating background timer loops.
+- **Crash loop restart budget preservation** (#22): `history.json` now records boot timestamps only when an actual restart occurred (`boot.wasRestart === true`), preventing cold boots and plugin reloads from exhausting the crash loop restart budget.
+- **Probe timeout cleanup** (#23): `probe()` health checks now register timers through `safeSetTimeout()` and reliably clear timeout handles on resolution, eliminating dangling timers in the event loop.
+
 ## 0.1.6
 
 ### Fixed
