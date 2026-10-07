@@ -11,6 +11,7 @@ import {
   parseCgroupUnit,
   parsePortOwner,
   parseListenPortsForPid,
+  readBoot,
   unitScopeFromCgroup,
   systemctlRestartArgs,
 } from '../lib/boot.js'
@@ -168,4 +169,37 @@ test('systemctl restart args includes --user for user units and bare for system'
   assert.deepEqual(systemctlRestartArgs('dsh.service', 'system'), ['restart', 'dsh.service'])
   assert.deepEqual(systemctlRestartArgs('dsh-test.service', 'user'), ['--user', 'restart', 'dsh-test.service'])
   assert.deepEqual(systemctlRestartArgs(''), [])
+})
+
+test('readBoot generates marker with pid, timestamp, and detected versions', () => {
+  const now = 1758500000000
+  const marker = readBoot(now, { pluginVersion: '0.1.7', dshVersion: '0.2.0-rc.2', pid: 9999 })
+  assert.equal(marker.pid, 9999)
+  assert.equal(marker.bootAt, new Date(now).toISOString())
+  assert.equal(marker.pluginVersion, '0.1.7')
+  assert.equal(marker.dshVersion, '0.2.0-rc.2')
+
+  const prevEnv = process.env.DSH_VERSION
+  try {
+    process.env.DSH_VERSION = '0.2.0-env'
+    const autoMarker = readBoot(now, { pluginVersion: '0.1.7' })
+    assert.equal(autoMarker.dshVersion, '0.2.0-env')
+  } finally {
+    if (prevEnv === undefined) delete process.env.DSH_VERSION
+    else process.env.DSH_VERSION = prevEnv
+  }
+})
+
+test('intentState recognises intent without sessionId when reason or resume is present', () => {
+  const now = Date.parse('2026-09-21T20:00:00.000Z')
+  const noSession = intentState({ at: new Date(now - 1000).toISOString(), reason: 'upgraded', resume: 'run smoke' }, { now })
+  assert.equal(noSession.present, true)
+  assert.equal(noSession.stale, false)
+  assert.equal(noSession.sessionId, '')
+  assert.equal(noSession.reason, 'upgraded')
+  assert.equal(noSession.resume, 'run smoke')
+
+  const empty = intentState({}, { now })
+  assert.equal(empty.present, false)
+  assert.equal(empty.stale, false)
 })

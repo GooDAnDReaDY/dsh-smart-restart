@@ -139,3 +139,97 @@ test('client slots register the live seats and not the retired one', async () =>
   assert.equal(rowSlot.slotEntry.key, 'goodandready-smart-restart', 'namespace is the profile entry id')
   assert.equal(rowSlot.slotEntry.locale, 'goodandready-smart-restart')
 })
+
+test('cold boot preserves restart budget and does not record in history.json', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-cold-'))
+  const entryConfig = {
+    enabled: true, stateDir,
+  }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: { register: () => () => {} },
+    agents: { get: () => null },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+  const cleanup = apply(mockCtx, entryConfig)
+  cleanup()
+
+  let historyExists = true
+  try {
+    await readFile(join(stateDir, 'history.json'), 'utf8')
+  } catch (err) {
+    if (err.code === 'ENOENT') historyExists = false
+  }
+  assert.equal(historyExists, false, 'cold boot must not append to history.json')
+
+  const marker = JSON.parse(await readFile(join(stateDir, 'marker.json'), 'utf8'))
+  assert.equal(typeof marker.bootAt, 'string')
+  assert.equal(marker.pid, process.pid)
+  assert.ok(marker.pluginVersion)
+
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('restart boot records in history.json and delivers report to primary agent if sessionId is empty', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-restart-'))
+  const { writeFile } = await import('node:fs/promises')
+  await writeFile(join(stateDir, 'marker.json'), JSON.stringify({ pid: 1, bootAt: new Date(Date.now() - 5000).toISOString() }))
+  await writeFile(join(stateDir, 'intent.json'), JSON.stringify({ at: new Date().toISOString(), reason: 'upgraded', resume: 'continue job' }))
+
+  let followedUpMessage = null
+  const primaryAgent = {
+    followup(msg) {
+      followedUpMessage = msg
+    }
+  }
+
+  const entryConfig = {
+    enabled: true, stateDir, target: 'primary',
+  }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: { register: () => () => {} },
+    agents: {
+      get: () => null,
+      roots: () => [primaryAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+
+  const history = JSON.parse(await readFile(join(stateDir, 'history.json'), 'utf8'))
+  assert.equal(Array.isArray(history), true)
+  assert.equal(history.length, 1)
+
+  await new Promise((resolve) => setTimeout(resolve, 1800))
+
+  assert.ok(followedUpMessage, 'report must be delivered to primary agent')
+  assert.match(followedUpMessage.content[0].text, /upgraded/)
+  assert.match(followedUpMessage.content[0].text, /continue job/)
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('health checks with probe do not leak timers', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-probe-'))
+  const entryConfig = { enabled: true, stateDir }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: { register: () => () => {} },
+    agents: { get: () => null, roots: () => [] },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+    get: () => ({ list: () => [] }),
+  }
+  const cleanup = apply(mockCtx, entryConfig)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
