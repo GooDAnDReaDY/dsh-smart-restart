@@ -203,3 +203,39 @@ test('intentState recognises intent without sessionId when reason or resume is p
   assert.equal(empty.present, false)
   assert.equal(empty.stale, false)
 })
+
+test('systemctlRestartArgs validates unit syntax and restricts to allowedUnit (#36)', async () => {
+  const { systemctlRestartArgs } = await import('../lib/boot.js')
+  assert.deepEqual(systemctlRestartArgs('dsh-web.service'), ['restart', 'dsh-web.service'])
+  assert.deepEqual(systemctlRestartArgs('dsh-web.service', 'user'), ['--user', 'restart', 'dsh-web.service'])
+  // Invalid unit names or shell injection attempts are refused
+  assert.deepEqual(systemctlRestartArgs('dsh-web.service; rm -rf /'), [])
+  assert.deepEqual(systemctlRestartArgs('dsh-web.target'), [])
+  assert.deepEqual(systemctlRestartArgs('../../etc/passwd'), [])
+  // When allowedUnit is specified, divergent units are refused
+  assert.deepEqual(systemctlRestartArgs('rogue.service', 'system', { allowedUnit: 'dsh-web.service' }), [])
+  assert.deepEqual(systemctlRestartArgs('dsh-web.service', 'system', { allowedUnit: 'dsh-web.service' }), ['restart', 'dsh-web.service'])
+})
+
+test('clampDelayMs bounds delay between 500ms and 2147483647ms (#36)', async () => {
+  const { clampDelayMs, MAX_DELAY_MS } = await import('../lib/boot.js')
+  assert.equal(clampDelayMs(100), 500)
+  assert.equal(clampDelayMs(5000), 5000)
+  assert.equal(clampDelayMs(3000000000), MAX_DELAY_MS)
+  assert.equal(clampDelayMs(Infinity), MAX_DELAY_MS)
+  assert.equal(clampDelayMs('not-a-number', 4000), 4000)
+})
+
+test('resolveSafeStateDir prevents path traversal outside baseHome (#36)', async () => {
+  const { resolveSafeStateDir } = await import('../lib/boot.js')
+  const baseHome = '/home/user/.dsh'
+  // Default fallback
+  assert.equal(resolveSafeStateDir('', baseHome), '/home/user/.dsh/.restart-guard')
+  // Valid relative subdirectory inside baseHome
+  assert.equal(resolveSafeStateDir('safe-state', baseHome), '/home/user/.dsh/safe-state')
+  // Path traversal attempting to escape baseHome is blocked and falls back to default
+  assert.equal(resolveSafeStateDir('../../../etc/cron.d', baseHome), '/home/user/.dsh/.restart-guard')
+  assert.equal(resolveSafeStateDir('safe/../../etc', baseHome), '/home/user/.dsh/.restart-guard')
+  // Absolute paths for test fixtures are resolved
+  assert.equal(resolveSafeStateDir('/tmp/test-fixture', baseHome), '/tmp/test-fixture')
+})
