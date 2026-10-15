@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.9
+
+### Security
+- **Host approval primitive for harness restart** (#36): `dsh_restart` tool no longer treats `{ confirm: true }` from the calling LLM agent as final authorization to restart the harness. Added `requireApproval: Schema.boolean().default(true).volatile()` to config and registered a `tools/pre-execute` waterfall hook returning `{ kind: 'ask', reason: ... }`. Host approval is requested via `ctx.approval.request()` before triggering `systemctl` or process signals.
+- **Systemd unit name validation & detection check** (#36): `systemctlRestartArgs` now enforces strict unit name syntax matching `/^[A-Za-z0-9@_.-]+\.service$/` and validates configured units against the running unit detected from `/proc/self/cgroup` (`allowedUnit`). Invalid or unauthorized unit specifications fail closed.
+- **State directory path traversal protection** (#36): `resolveSafeStateDir()` prevents directory traversal outside `$DSH_HOME` via `../` sequences, ensuring persistence files remain sandboxed in `$DSH_HOME/.restart-guard`.
+- **Delay clamping to prevent 32-bit timer overflow** (#36): `clampDelayMs()` bounds restart delays between 500ms and Node.js 32-bit integer limit `2147483647` ms, preventing immediate timer fires caused by overflow.
+
+### Fixed
+- **Preflight validation for devDependencies satisfying peerDependencies** (#35): added Check #13 (`devDep ⊆ peerRange`) to `dsh-plugin-preflight`, ensuring development dependencies always satisfy declared peer compatibility bounds.
+- **Primary agent fallback formalization** (#35): clarified and verified `target: 'primary'` contract, cleanly falling back from `ctx.agents.roots()[0]` to `ctx.agents.list()[0]` when delivering post-restart verdicts.
+
 ## 0.1.8
 
 ### Fixed

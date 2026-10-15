@@ -233,3 +233,95 @@ test('health checks with probe do not leak timers', async () => {
   cleanup()
   await rm(stateDir, { recursive: true, force: true })
 })
+
+test('tools/pre-execute intercepts dsh_restart when requireApproval is true (#36)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-approval-'))
+  let preExecuteHandler = null
+  let effectDisposer = null
+
+  const mockCtx = {
+    on(event, handler) {
+      if (event === 'tools/pre-execute') preExecuteHandler = handler
+      return () => {}
+    },
+    inject() {},
+    tools: { register: () => () => {} },
+    agents: { get: () => null, roots: () => [] },
+    logger: { warn: () => {}, info: () => {} },
+    effect(fn) {
+      effectDisposer = fn()
+    },
+  }
+
+  const entryConfig = { enabled: true, stateDir, requireApproval: true }
+  const cleanup = apply(mockCtx, entryConfig)
+
+  assert.equal(typeof preExecuteHandler, 'function')
+
+  // When requireApproval is true, dsh_restart triggers kind: 'ask'
+  const askResult = await preExecuteHandler({ name: 'dsh_restart', arguments: { reason: 'test security' } }, () => ({ kind: 'allow' }))
+  assert.equal(askResult.kind, 'ask')
+  assert.match(askResult.reason, /test security/)
+
+  // When command is not dsh_restart, calls next()
+  let nextCalled = false
+  const otherResult = await preExecuteHandler({ name: 'other_tool' }, () => {
+    nextCalled = true
+    return { kind: 'allow' }
+  })
+  assert.equal(nextCalled, true)
+  assert.equal(otherResult.kind, 'allow')
+
+  // When requireApproval is false, dsh_restart calls next()
+  entryConfig.requireApproval = false
+  let restartNextCalled = false
+  const bypassResult = await preExecuteHandler({ name: 'dsh_restart' }, () => {
+    restartNextCalled = true
+    return { kind: 'allow' }
+  })
+  assert.equal(restartNextCalled, true)
+  assert.equal(bypassResult.kind, 'allow')
+
+  cleanup()
+  if (effectDisposer) effectDisposer()
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('primary agent delivery falls back to ctx.agents.list when roots is empty (#35)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-listfallback-'))
+  const { writeFile } = await import('node:fs/promises')
+  await writeFile(join(stateDir, 'marker.json'), JSON.stringify({ pid: 1, bootAt: new Date(Date.now() - 5000).toISOString() }))
+  await writeFile(join(stateDir, 'intent.json'), JSON.stringify({ at: new Date().toISOString(), reason: 'upgraded', resume: 'continue job' }))
+
+  let followedUpMessage = null
+  const fallbackAgent = {
+    followup(msg) {
+      followedUpMessage = msg
+    }
+  }
+
+  const entryConfig = {
+    enabled: true, stateDir, target: 'primary',
+  }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: { register: () => () => {} },
+    agents: {
+      get: () => null,
+      roots: () => [],
+      list: () => [fallbackAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+  await new Promise((resolve) => setTimeout(resolve, 1800))
+
+  assert.ok(followedUpMessage, 'report must be delivered to fallback agent from list()')
+  assert.match(followedUpMessage.content[0].text, /upgraded/)
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
