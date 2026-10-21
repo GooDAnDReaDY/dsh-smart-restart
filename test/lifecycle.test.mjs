@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, mkdtemp, rm } from 'node:fs/promises'
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -482,6 +482,126 @@ test('dsh_restart waits for active agents to drain before proceeding (#39)', asy
   const intent = JSON.parse(await readFile(join(stateDir, 'intent.json'), 'utf8'))
   assert.equal(intent.drain.drained, true)
   assert.equal(intent.drain.activeCount, 0)
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('dsh_restart saves structured context in intent.json and status exposes it (#40)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-context-'))
+  const registeredTools = []
+  const callerAgent = { id: 's-caller', status: 'running' }
+
+  const entryConfig = { enabled: true, stateDir, requireApproval: false, delayMs: 60000 }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: {
+      register(def) {
+        registeredTools.push(def)
+        return () => {}
+      },
+    },
+    agents: {
+      get: () => callerAgent,
+      roots: () => [callerAgent],
+      list: () => [callerAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+  const restartTool = registeredTools.find((t) => t.name === 'dsh_restart')
+  const statusTool = registeredTools.find((t) => t.name === 'dsh_restart_status')
+  assert.ok(restartTool)
+  assert.ok(statusTool)
+
+  const contextData = {
+    cwd: '/custom/path',
+    branch: 'feat/test-snapshot',
+    worktree: 'wt-snapshot',
+    files: ['lib/index.js'],
+    tasks: ['run test suite'],
+    memoryTag: 'snapshot-ref-1',
+  }
+
+  const res = await restartTool.execute(
+    { confirm: true, reason: 'test context', context: contextData },
+    { sessionId: 's-caller' },
+  )
+  assert.equal(res.ok, true)
+  assert.equal(res.restarting, true)
+
+  const intent = JSON.parse(await readFile(join(stateDir, 'intent.json'), 'utf8'))
+  assert.deepEqual(intent.context, contextData)
+
+  const status = await statusTool.execute({})
+  assert.deepEqual(status.pendingIntent.context, contextData)
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('post-boot check computes package diff between boots and attributes in report (#41)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-diff-'))
+  const registeredTools = []
+  let deliveredMessage = null
+
+  const callerAgent = {
+    id: 's-caller',
+    status: 'idle',
+    send: async (msg) => { deliveredMessage = msg },
+  }
+
+  // Pre-seed marker.json with previous packages and pid 11111 (different from current process.pid)
+  const previousMarker = {
+    pid: 11111,
+    bootAt: new Date(Date.now() - 10000).toISOString(),
+    packages: {
+      '@deepseek-ai/dsh-tools': '0.0.1',
+      'old-dep': '1.0.0',
+    },
+  }
+  await writeFile(join(stateDir, 'marker.json'), JSON.stringify(previousMarker, null, 2))
+
+  const entryConfig = { enabled: true, stateDir, requireApproval: false }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: {
+      register(def) {
+        registeredTools.push(def)
+        return () => {}
+      },
+    },
+    agents: {
+      get: () => callerAgent,
+      roots: () => [callerAgent],
+      list: () => [callerAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+
+  // Give the post-boot check a moment to run (postBootCheck fires at 1500ms)
+  await new Promise((resolve) => setTimeout(resolve, 1800))
+
+  const statusTool = registeredTools.find((t) => t.name === 'dsh_restart_status')
+  assert.ok(statusTool)
+  const status = await statusTool.execute({})
+
+  // Verify lastReport has diff
+  assert.ok(status.lastReport)
+  assert.ok(status.lastReport.diff)
+  assert.equal(status.lastReport.diff.hasChanges, true)
+  // Verify delivered message contains package changes if diff exists
+  if (deliveredMessage) {
+    const text = deliveredMessage.content[0].text
+    assert.match(text, /changes:/)
+  }
 
   cleanup()
   await rm(stateDir, { recursive: true, force: true })

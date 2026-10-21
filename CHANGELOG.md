@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.11
+
+### Features
+- **Rich situational snapshot on restart** (#40): `dsh_restart` now accepts an optional structured `context` object capturing active working state (`cwd`, `branch`, `worktree`, `files`, `tasks`, `memoryTag`, plus arbitrary extra keys). Defaults `cwd` to `process.cwd()` when omitted. Context is persisted into `intent.json` across restarts, reported in post-boot agent notifications under `- context: ...`, and exposed through `dsh_restart_status` tool for immediate resumption of work without manual reorientation.
+- **Diff attribution between boots** (#41): `marker.json` now records an inventory snapshot of installed packages (`dependencies` and `devDependencies` from `package.json` / profile configs). On boot, `diffPackages()` calculates packages added, removed, or upgraded since the previous marker. Package changes are attributed in `last-report.json`, exposed via `dsh_restart_status.lastDiff`, and formatted into the post-boot report under `- changes: ...`.
+
 ## 0.1.10
 
 ### Features
