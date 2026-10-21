@@ -325,3 +325,164 @@ test('primary agent delivery falls back to ctx.agents.list when roots is empty (
   cleanup()
   await rm(stateDir, { recursive: true, force: true })
 })
+
+test('dsh_restart dryRun runs preflight and returns simulation result without restarting (#38)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-dryrun-'))
+  const registeredTools = []
+  const entryConfig = { enabled: true, stateDir, requireApproval: false }
+
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: {
+      register(def) {
+        registeredTools.push(def)
+        return () => {}
+      },
+    },
+    agents: { get: () => null, roots: () => [], list: () => [] },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+  const restartTool = registeredTools.find((t) => t.name === 'dsh_restart')
+  assert.ok(restartTool)
+
+  const res = await restartTool.execute({ dryRun: true }, { sessionId: 's-dry' })
+  assert.equal(res.ok, true)
+  assert.equal(res.dryRun, true)
+  assert.equal(res.preflight.verdict, 'passed')
+  assert.match(res.note, /restart simulated/)
+
+  // Verify that intent.json was NOT written
+  let intentExists = true
+  try {
+    await readFile(join(stateDir, 'intent.json'), 'utf8')
+  } catch (err) {
+    if (err.code === 'ENOENT') intentExists = false
+  }
+  assert.equal(intentExists, false, 'dryRun must never write intent.json')
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
+
+test('dsh_restart aborts restart and delivers failure message when preflight fails (#38)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-preflight-fail-'))
+  const fakeHome = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  const prevHome = process.env.DSH_HOME
+  process.env.DSH_HOME = fakeHome
+
+  const { writeFile } = await import('node:fs/promises')
+  // Write a broken cordis.patch.yml with tab characters
+  await writeFile(join(fakeHome, 'cordis.patch.yml'), 'services:\n\tbroken_tab: true\n')
+
+  let deliveredMessage = null
+  const mockAgent = {
+    followup(msg) {
+      deliveredMessage = msg
+    },
+  }
+
+  const registeredTools = []
+  const entryConfig = { enabled: true, stateDir, requireApproval: false }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: {
+      register(def) {
+        registeredTools.push(def)
+        return () => {}
+      },
+    },
+    agents: {
+      get: () => mockAgent,
+      roots: () => [mockAgent],
+      list: () => [mockAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  try {
+    const cleanup = apply(mockCtx, entryConfig)
+    const restartTool = registeredTools.find((t) => t.name === 'dsh_restart')
+    assert.ok(restartTool)
+
+    const res = await restartTool.execute({ confirm: true }, { sessionId: 's-caller' })
+    assert.equal(res.ok, false)
+    assert.match(res.error, /preflight validation failed/)
+    assert.equal(res.preflight.ok, false)
+
+    // Verification of chat delivery: message must be delivered to caller session
+    assert.ok(deliveredMessage, 'preflight failure report must be delivered to caller session')
+    assert.match(deliveredMessage.content[0].text, /pre-flight validation failed/)
+    assert.match(deliveredMessage.content[0].text, /Tab characters are not allowed/)
+
+    // Verify intent.json was NOT created
+    let intentExists = true
+    try {
+      await readFile(join(stateDir, 'intent.json'), 'utf8')
+    } catch (err) {
+      if (err.code === 'ENOENT') intentExists = false
+    }
+    assert.equal(intentExists, false, 'aborted preflight must not write intent.json')
+
+    cleanup()
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = prevHome
+    await rm(stateDir, { recursive: true, force: true })
+    await rm(fakeHome, { recursive: true, force: true })
+  }
+})
+
+test('dsh_restart waits for active agents to drain before proceeding (#39)', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'dsh-smart-restart-drain-'))
+  const registeredTools = []
+  let workerActive = true
+
+  const callerAgent = { id: 's-caller', status: 'running' }
+  const workerAgent = { id: 'worker-agent', get status() { return workerActive ? 'running' : 'idle' } }
+
+  // Set worker to finish after 80ms
+  setTimeout(() => { workerActive = false }, 80)
+
+  const entryConfig = { enabled: true, stateDir, requireApproval: false, drainTimeoutMs: 2000, delayMs: 60000 }
+  const mockCtx = {
+    on: () => () => {},
+    inject: () => {},
+    tools: {
+      register(def) {
+        registeredTools.push(def)
+        return () => {}
+      },
+    },
+    agents: {
+      get: () => callerAgent,
+      roots: () => [callerAgent, workerAgent],
+      list: () => [callerAgent, workerAgent],
+    },
+    logger: { warn: () => {}, info: () => {} },
+    effect: () => {},
+  }
+
+  const cleanup = apply(mockCtx, entryConfig)
+  const restartTool = registeredTools.find((t) => t.name === 'dsh_restart')
+  assert.ok(restartTool)
+
+  const res = await restartTool.execute({ confirm: true }, { sessionId: 's-caller' })
+  assert.equal(res.ok, true)
+  assert.equal(res.restarting, true)
+  assert.equal(res.drain.drained, true)
+  assert.ok(res.drain.waitedMs >= 60, 'drain must wait for active worker')
+
+  // Check intent.json contains drain record
+  const intent = JSON.parse(await readFile(join(stateDir, 'intent.json'), 'utf8'))
+  assert.equal(intent.drain.drained, true)
+  assert.equal(intent.drain.activeCount, 0)
+
+  cleanup()
+  await rm(stateDir, { recursive: true, force: true })
+})
