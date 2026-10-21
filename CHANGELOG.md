@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.12
+
+### Features
+- **Interactive reliability dashboard & safe restart in WebUI** (#42): `RestartGuardCard` now embeds an interactive health dashboard. Displays live verdict status badges (`Healthy`, `Degraded`, `Loop guard active`), breakdown pills for individual checks (core services, systemd unit, port, version), and a collapsible recent restarts history table with timestamps, downtime durations, and reasons. Includes an interactive "Safe Restart" action with preflight validation, customizable delay, and confirmation dialog.
+- **Grace period countdown banner & restart cancellation** (#43): When a restart is scheduled with a delay, WebUI displays a live countdown banner showing remaining seconds, reason, and an emergency "Cancel Restart" button. Adds HTTP endpoint `POST /dsh-smart-restart/cancel` and agent tool `dsh_restart_cancel` to immediately clear pending restart timers, delete `intent.json`, notify calling sessions, and prevent unexpected harness termination.
+
 ## 0.1.11
 
 ### Features

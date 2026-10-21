@@ -18,7 +18,7 @@ async function loadClient(modules = {}) {
     window,
     console,
     document: {
-      createElement: () => ({ setAttribute: () => {}, textContent: '' }),
+      createElement: () => ({ setAttribute: () => {}, textContent: '', dataset: {} }),
       head: { appendChild: () => {} },
     },
   })
@@ -30,6 +30,7 @@ async function loadClient(modules = {}) {
       return {
         createElement: (...args) => args,
         useState: (v) => [v, () => {}],
+        useEffect: (fn) => typeof fn === 'function' && fn(),
       }
     }
     return undefined
@@ -128,4 +129,62 @@ test('css uses var(--dsw-alias-state-error-primary) instead of deprecated label-
   const { source } = await loadClient()
   assert.ok(source.includes('--dsw-alias-state-error-primary'), 'css has error primary token')
   assert.ok(!source.includes('--dsw-alias-label-error'), 'deprecated token removed')
+})
+
+test('client registers dashboard, history, and countdown locales in en and zh (#42, #43)', async () => {
+  const { exports } = await loadClient()
+  let capturedDicts = null
+  const ctx = {
+    effect(fn) { fn() },
+    locale: {
+      register(_ns, dicts) {
+        capturedDicts = dicts
+        return () => {}
+      },
+      bind: () => (k) => k,
+    },
+    slots: { inject: () => {}, register: () => {} },
+  }
+
+  exports.apply(ctx)
+  assert.ok(capturedDicts)
+  const requiredKeys = [
+    'healthVerdict',
+    'healthOk',
+    'healthDegraded',
+    'healthLoop',
+    'historyTitle',
+    'safeRestart',
+    'confirmRestart',
+    'cancelRestart',
+    'restartingIn',
+    'restartCancelled',
+  ]
+  for (const k of requiredKeys) {
+    assert.ok(capturedDicts.en[k], `en must have key ${k}`)
+    assert.ok(capturedDicts.zh[k], `zh must have key ${k}`)
+  }
+})
+
+test('RestartGuardCard mounts cleanly with dashboard and countdown styles (#42, #43)', async () => {
+  const { exports, source } = await loadClient()
+  assert.ok(exports.RestartGuardCard, 'RestartGuardCard must be exported')
+  // Verify CSS contains dashboard, badges, banner, and table classes
+  assert.ok(source.includes('.sr-banner'))
+  assert.ok(source.includes('.sr-dash'))
+  assert.ok(source.includes('.sr-badge-ok'))
+  assert.ok(source.includes('.sr-badge-warn'))
+  assert.ok(source.includes('.sr-badge-err'))
+  assert.ok(source.includes('.sr-btn-danger'))
+  assert.ok(source.includes('.sr-table'))
+
+  // Mount card component
+  const rendered = exports.RestartGuardCard({
+    t: (k) => k,
+    scope: {
+      getSnapshot: () => ({ status: 'ready', value: { enabled: true } }),
+      subscribe: () => () => {},
+    },
+  })
+  assert.ok(rendered, 'RestartGuardCard must render')
 })
