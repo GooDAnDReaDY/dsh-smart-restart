@@ -7,7 +7,9 @@ import {
   composeChecks,
   countActiveAgents,
   detectRestart,
+  diffPackages,
   drainActiveAgents,
+  formatPackageDiff,
   formatPreflightFailureReport,
   intentState,
   loopGuard,
@@ -381,3 +383,90 @@ test('drainActiveAgents waits for active tasks to complete (#39)', async () => {
   assert.equal(timedOut.drained, false)
   assert.equal(timedOut.activeCount, 1)
 })
+
+test('diffPackages identifies added, removed, and upgraded packages (#41)', () => {
+  const previous = {
+    '@deepseek-ai/dsh-tools': '0.1.7',
+    'left-pad': '1.0.0',
+    'express': '4.18.0',
+  }
+  const current = {
+    '@deepseek-ai/dsh-tools': '0.2.0',
+    'express': '4.18.0',
+    'lodash': '4.17.21',
+  }
+  const diff = diffPackages(previous, current)
+  assert.equal(diff.hasChanges, true)
+  assert.deepEqual(diff.changed, [{ name: '@deepseek-ai/dsh-tools', from: '0.1.7', to: '0.2.0' }])
+  assert.deepEqual(diff.added, [{ name: 'lodash', version: '4.17.21' }])
+  assert.deepEqual(diff.removed, [{ name: 'left-pad', version: '1.0.0' }])
+
+  const formatted = formatPackageDiff(diff)
+  assert.match(formatted, /\+ lodash@4\.17\.21/)
+  assert.match(formatted, /- left-pad@1\.0\.0/)
+  assert.match(formatted, /@deepseek-ai\/dsh-tools 0\.1\.7 -> 0\.2\.0/)
+})
+
+test('diffPackages treats empty or missing previous marker as no changes (#41)', () => {
+  const current = { 'a-package': '1.0.0' }
+  assert.equal(diffPackages(null, current).hasChanges, false)
+  assert.equal(diffPackages({}, current).hasChanges, false)
+  assert.equal(diffPackages(current, current).hasChanges, false)
+})
+
+test('intentState captures structured situational context (#40)', () => {
+  const intent = intentState({
+    reason: 'reloading for config',
+    context: {
+      cwd: '/workspace/project',
+      branch: 'feature-x',
+      worktree: 'wt-feature-x',
+      files: ['src/index.js', 'package.json'],
+      tasks: ['test suite', 'git push'],
+      memoryTag: 'task-40-ref',
+      customKey: 'custom-value',
+    },
+  })
+  assert.ok(intent.context)
+  assert.equal(intent.context.cwd, '/workspace/project')
+  assert.equal(intent.context.branch, 'feature-x')
+  assert.equal(intent.context.worktree, 'wt-feature-x')
+  assert.deepEqual(intent.context.files, ['src/index.js', 'package.json'])
+  assert.deepEqual(intent.context.tasks, ['test suite', 'git push'])
+  assert.equal(intent.context.memoryTag, 'task-40-ref')
+  assert.equal(intent.context.customKey, 'custom-value')
+})
+
+test('intentState recognizes intent when only context is provided (#40)', () => {
+  const intent = intentState({
+    context: { branch: 'main' },
+  })
+  assert.equal(intent.present, true)
+  assert.equal(intent.context.branch, 'main')
+})
+
+test('buildReport formats context and changes in post-boot output (#40, #41)', () => {
+  const report = buildReport({
+    bootAt: '2026-10-21T15:00:00.000Z',
+    pid: 12345,
+    checks: [{ name: 'unit', ok: true, detail: 'active' }],
+    reason: 'installed plugins',
+    resume: 'resume work on issue 40',
+    context: {
+      cwd: '/home/vadim/project',
+      branch: 'feat/test',
+      files: ['lib/index.js'],
+      tasks: ['npm test'],
+    },
+    diff: {
+      hasChanges: true,
+      added: [{ name: 'new-pkg', version: '1.0.0' }],
+      changed: [{ name: 'core-pkg', from: '0.1.0', to: '0.2.0' }],
+      removed: [],
+    },
+  })
+  assert.match(report, /- changes: core-pkg 0\.1\.0 -> 0\.2\.0, \+ new-pkg@1\.0\.0/)
+  assert.match(report, /- context: branch: feat\/test, cwd: \/home\/vadim\/project, files: \[lib\/index\.js\], tasks: \[npm test\]/)
+  assert.match(report, /resume: resume work on issue 40/)
+})
+
