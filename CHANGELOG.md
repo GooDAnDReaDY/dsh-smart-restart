@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10
+
+### Features
+- **Pre-flight configuration and environment validation before restart** (#38): `dsh_restart` now validates `package.json` (JSON syntax) and `cordis.patch.yml` / `cordis.yml` (YAML tab indentation & delimiter balance via `validateYamlSyntax`), systemd unit syntax, and network port conflicts before initiating restart. If any check fails, the restart is aborted, and an actionable diagnostic alert is delivered directly to the chat session via `deliverTo(sessionId, failureMessage)`. Added `dryRun: true` parameter to simulate preflight checks without restarting.
+- **Graceful drain guard for active agent tasks** (#39): `dsh_restart` now inspects running agent turns in `ctx.agents` via `countActiveAgents(agents, callerSessionId)` and waits for in-flight tasks to finish before terminating the harness (`drainActiveAgents`). Configurable via `drainTimeoutMs` (default `15000` ms) in plugin config and the WebUI settings card. Drain metrics (`drained`, `waitedMs`, `activeCount`) are recorded into `intent.json` and reported in the tool response.
+
 ## 0.1.9
 
 ### Security

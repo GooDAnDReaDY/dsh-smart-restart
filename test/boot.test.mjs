@@ -3,17 +3,25 @@ import assert from 'node:assert/strict'
 
 import {
   buildReport,
+  clampDelayMs,
   composeChecks,
+  countActiveAgents,
   detectRestart,
+  drainActiveAgents,
+  formatPreflightFailureReport,
   intentState,
   loopGuard,
+  MAX_DELAY_MS,
   ownerBelongsToUnit,
   parseCgroupUnit,
   parsePortOwner,
   parseListenPortsForPid,
   readBoot,
-  unitScopeFromCgroup,
+  resolveSafeStateDir,
   systemctlRestartArgs,
+  unitScopeFromCgroup,
+  validateRestartPreflight,
+  validateYamlSyntax,
 } from '../lib/boot.js'
 
 test('a different pid is a restart, the same pid is not', () => {
@@ -127,24 +135,30 @@ test('the port owner is read out of ss output', () => {
 test('the port check names a stray instance instead of shrugging', () => {
   const inside = ownerBelongsToUnit({ ownerCgroup: '0::/system.slice/dsh-web.service', unit: 'dsh-web.service' })
   assert.equal(inside.ok, true)
-  const stray = ownerBelongsToUnit({ ownerCgroup: '0::/user.slice/session-170773.scope', unit: 'dsh-web.service' })
-  assert.equal(stray.ok, false)
-  assert.match(stray.detail, /stray instance/)
-  assert.equal(ownerBelongsToUnit({ ownerCgroup: '', unit: 'dsh-web.service' }).ok, false)
-  assert.equal(ownerBelongsToUnit({ ownerCgroup: 'x', unit: '' }).ok, false)
+  assert.match(inside.detail, /inside dsh-web\.service/)
+
+  const outside = ownerBelongsToUnit({ ownerCgroup: '0::/system.slice/dsh-stray.service', unit: 'dsh-web.service' })
+  assert.equal(outside.ok, false)
+  assert.match(outside.detail, /stray instance/)
+
+  const noUnit = ownerBelongsToUnit({ ownerCgroup: '0::/system.slice/dsh-web.service', unit: '' })
+  assert.equal(noUnit.ok, false)
 })
 
 test('an intent older than its TTL is marked stale rather than presented as current work', () => {
   const now = Date.parse('2026-09-21T20:00:00.000Z')
-  const fresh = intentState({ sessionId: 's1', at: new Date(now - 60_000).toISOString(), resume: 'x' }, { now })
+  const fresh = intentState({ at: new Date(now - 60000).toISOString(), reason: 'upgraded', resume: 'run smoke' }, { now })
   assert.equal(fresh.present, true)
   assert.equal(fresh.stale, false)
-  assert.equal(fresh.resume, 'x')
+  assert.equal(fresh.reason, 'upgraded')
+  assert.equal(fresh.resume, 'run smoke')
 
-  const old = intentState({ sessionId: 's1', at: new Date(now - 7 * 3600_000).toISOString() }, { now })
-  assert.equal(old.stale, true)
+  const stale = intentState({ at: new Date(now - 7 * 3600 * 1000).toISOString(), reason: 'ancient' }, { now })
+  assert.equal(stale.present, true)
+  assert.equal(stale.stale, true)
 
-  assert.deepEqual(intentState(null, { now }), { present: false, stale: false })
+  assert.deepEqual(intentState(null), { present: false, stale: false })
+  assert.deepEqual(intentState({ at: 'broken-date' }), { present: false, stale: false })
 })
 
 test('a user unit is recognised, so it is inspected in the user manager', () => {
@@ -205,7 +219,6 @@ test('intentState recognises intent without sessionId when reason or resume is p
 })
 
 test('systemctlRestartArgs validates unit syntax and restricts to allowedUnit (#36)', async () => {
-  const { systemctlRestartArgs } = await import('../lib/boot.js')
   assert.deepEqual(systemctlRestartArgs('dsh-web.service'), ['restart', 'dsh-web.service'])
   assert.deepEqual(systemctlRestartArgs('dsh-web.service', 'user'), ['--user', 'restart', 'dsh-web.service'])
   // Invalid unit names or shell injection attempts are refused
@@ -218,7 +231,6 @@ test('systemctlRestartArgs validates unit syntax and restricts to allowedUnit (#
 })
 
 test('clampDelayMs bounds delay between 500ms and 2147483647ms (#36)', async () => {
-  const { clampDelayMs, MAX_DELAY_MS } = await import('../lib/boot.js')
   assert.equal(clampDelayMs(100), 500)
   assert.equal(clampDelayMs(5000), 5000)
   assert.equal(clampDelayMs(3000000000), MAX_DELAY_MS)
@@ -227,7 +239,6 @@ test('clampDelayMs bounds delay between 500ms and 2147483647ms (#36)', async () 
 })
 
 test('resolveSafeStateDir prevents path traversal outside baseHome (#36)', async () => {
-  const { resolveSafeStateDir } = await import('../lib/boot.js')
   const baseHome = '/home/user/.dsh'
   // Default fallback
   assert.equal(resolveSafeStateDir('', baseHome), '/home/user/.dsh/.restart-guard')
@@ -238,4 +249,135 @@ test('resolveSafeStateDir prevents path traversal outside baseHome (#36)', async
   assert.equal(resolveSafeStateDir('safe/../../etc', baseHome), '/home/user/.dsh/.restart-guard')
   // Absolute paths for test fixtures are resolved
   assert.equal(resolveSafeStateDir('/tmp/test-fixture', baseHome), '/tmp/test-fixture')
+})
+
+test('validateYamlSyntax catches tab indentation and unbalanced delimiters (#38)', () => {
+  // Valid yaml
+  const valid = 'name: test\nservices:\n  - webServer\n  - tools\n'
+  assert.deepEqual(validateYamlSyntax(valid), { valid: true })
+
+  // Invalid: tabs used for indentation
+  const tabYaml = 'name: test\n\tindent_with_tab: true\n'
+  const tabRes = validateYamlSyntax(tabYaml)
+  assert.equal(tabRes.valid, false)
+  assert.match(tabRes.error, /Tab characters are not allowed/)
+  assert.equal(tabRes.line, 2)
+
+  // Invalid: unbalanced bracket
+  const bracketYaml = 'plugins: [first, second'
+  const bracketRes = validateYamlSyntax(bracketYaml)
+  assert.equal(bracketRes.valid, false)
+  assert.match(bracketRes.error, /Unclosed delimiter/)
+
+  // Invalid: mismatched brace
+  const mismatchYaml = 'config: {key: "val"]'
+  const mismatchRes = validateYamlSyntax(mismatchYaml)
+  assert.equal(mismatchRes.valid, false)
+  assert.match(mismatchRes.error, /Unmatched closing bracket/)
+})
+
+test('validateRestartPreflight verifies config syntax, unit format, and port conflicts (#38)', () => {
+  // Case 1: Healthy preflight
+  const healthy = validateRestartPreflight({
+    configFiles: [
+      { path: 'package.json', content: '{"name": "test-app", "version": "1.0.0"}' },
+      { path: 'cordis.patch.yml', content: 'services:\n  tools: true\n' },
+    ],
+    unit: 'dsh-web.service',
+    restartMode: 'systemctl',
+    portOwnerVerdict: { ok: true, detail: 'the port owner runs inside dsh-web.service' },
+  })
+  assert.equal(healthy.ok, true)
+  assert.equal(healthy.verdict, 'passed')
+  assert.equal(healthy.failed.length, 0)
+
+  // Case 2: Corrupted JSON config
+  const badJson = validateRestartPreflight({
+    configFiles: [
+      { path: 'package.json', content: '{"name": "broken", invalid' },
+    ],
+    restartMode: 'kill',
+  })
+  assert.equal(badJson.ok, false)
+  assert.equal(badJson.verdict, 'failed')
+  assert.match(badJson.error, /JSON parse error/)
+
+  // Case 3: Corrupted YAML config with tab indent
+  const badYaml = validateRestartPreflight({
+    configFiles: [
+      { path: 'cordis.patch.yml', content: 'services:\n\tweb: true\n' },
+    ],
+    restartMode: 'kill',
+  })
+  assert.equal(badYaml.ok, false)
+  assert.match(badYaml.error, /Tab characters are not allowed/)
+
+  // Case 4: Invalid unit name in systemctl mode
+  const badUnit = validateRestartPreflight({
+    configFiles: [],
+    unit: 'malicious.service; rm -rf /',
+    restartMode: 'systemctl',
+  })
+  assert.equal(badUnit.ok, false)
+  assert.match(badUnit.error, /invalid or missing unit name/)
+
+  // Case 5: Rogue port owner conflict
+  const roguePort = validateRestartPreflight({
+    configFiles: [],
+    unit: 'dsh-web.service',
+    restartMode: 'kill',
+    portOwnerVerdict: { ok: false, detail: 'stray instance holding port' },
+  })
+  assert.equal(roguePort.ok, false)
+  assert.match(roguePort.error, /stray instance/)
+})
+
+test('formatPreflightFailureReport generates clear actionable alert for chat (#38)', () => {
+  const preflight = {
+    ok: false,
+    checks: [
+      { name: 'config:cordis.patch.yml', ok: false, detail: 'Tab characters are not allowed for YAML indentation at line 4' },
+      { name: 'unit', ok: true, detail: 'valid unit syntax' },
+    ],
+  }
+  const report = formatPreflightFailureReport(preflight)
+  assert.match(report, /pre-flight validation failed/)
+  assert.match(report, /- FAIL config:cordis\.patch\.yml: Tab characters/)
+  assert.match(report, /- ok unit/)
+  assert.match(report, /action: fix the configuration/)
+})
+
+test('countActiveAgents excludes caller session and counts active turns (#39)', () => {
+  const agents = [
+    { id: 'caller-session', status: 'running' },
+    { id: 'other-session-1', status: 'running' },
+    { id: 'other-session-2', status: 'idle' },
+    { id: 'other-session-3', busy: true },
+  ]
+  // Caller session is ignored; other running/busy agents are counted
+  assert.equal(countActiveAgents(agents, 'caller-session'), 2)
+  assert.equal(countActiveAgents(agents, 'unknown-caller'), 3)
+  assert.equal(countActiveAgents([], 'caller-session'), 0)
+})
+
+test('drainActiveAgents waits for active tasks to complete (#39)', async () => {
+  let agentBusy = true
+  const getAgents = () => [
+    { id: 'caller-session', status: 'running' },
+    { id: 'worker-agent', status: agentBusy ? 'running' : 'idle' },
+  ]
+
+  // Simulate background task completing after 100ms
+  setTimeout(() => { agentBusy = false }, 100)
+
+  const result = await drainActiveAgents(getAgents, 'caller-session', 1000, 25)
+  assert.equal(result.drained, true)
+  assert.equal(result.activeCount, 0)
+  assert.ok(result.waitedMs >= 80)
+
+  // Simulate task that never finishes and times out
+  const busyAgent = () => [{ id: 'stuck-worker', status: 'running' }]
+  const timedOut = await drainActiveAgents(busyAgent, 'caller-session', 150, 25)
+  assert.equal(timedOut.drained, false)
+  assert.equal(timedOut.activeCount, 1)
 })
