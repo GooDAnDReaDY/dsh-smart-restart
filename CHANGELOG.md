@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.13
+## 0.1.14
 
 ### Features
 - **Direct chat command for safe DSH restart without SSH** (#44): Added slash command `/restart` (and aliases `!restart`, `/dsh-restart`) for instant restart directly from conversation without opening terminal or SSH. Dual-path architecture: registered via `@deepseek-ai/dsh-commands` and backed by a resilient fallback chat middleware. Supports interactive confirmation prompts (`/restart --confirm`, `-y`), simulation mode (`/restart --dry-run`), custom delay (`/restart --delay=10s`), reason tags (`/restart --reason="..."`), cancellation (`/restart cancel`, `/cancel-restart`), and instant health inspection (`/restart status`). The calling chat session is automatically captured as the post-boot delivery target, and the post-restart health verdict and package diff report are delivered right back into the same conversation.
