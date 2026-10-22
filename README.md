@@ -137,6 +137,20 @@ resume: continue the recorded task and report the result
 npm test
 ```
 
+## Chat Command
+
+You can restart DeepSeek Harness directly from any chat conversation without opening terminal or SSH:
+
+-  вЂ” safely restart with preflight validation (prompts to confirm if  is on);
+-  (or ) вЂ” restart immediately with confirmation;
+-  вЂ” simulate restart and verify preflight checks without restarting;
+-  вЂ” set custom grace period delay;
+-  вЂ” specify custom restart reason;
+-  вЂ” abort a scheduled restart before the delay timer expires;
+-  вЂ” inspect live health verdict, unit, port, and restart budget.
+
+The post-restart health verdict and package diff report are delivered right back into the same chat conversation.
+
 ## License
 
 MIT © GooDAnDReaDY
