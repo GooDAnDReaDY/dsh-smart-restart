@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.15
+
+### Bug Fixes
+- **Cordis Context proxy safe resolution & clean activation** (#49): Fixed `cannot get property "middleware" without inject` activation failure on DSH 0.2.1-rc.4 strict Cordis Context proxies. Added `safeGet(ctx, prop)` helper in `lib/chat-command.js` and safe logger resolution in `lib/index.js` to protect against missing-inject proxy traps for optional runtime services (`middleware`, `approval`, `logger`, `commands`). Added regression test suite verifying clean plugin activation and degradation under strict Cordis v4 proxy environments.
+
 ## 0.1.14
 
 ### Features
