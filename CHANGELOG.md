@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.16
+
+### Bug Fixes
+- **Producer-owned message source for DSH session format v4** (#51): Replaced legacy catch-all source `{ kind: 'plugin', plugin: name, ... }` in `deliverTo()` with canonical producer-owned source `{ kind: 'plugin:dsh-smart-restart', form: 'notice', summary: ... }`. DSH session format v4 (`dsh >= 0.1.7-alpha.1`) retired the catch-all `kind: 'plugin'` and rejects it across durable message slots (`format v4 message requires a producer-owned source kind`). Added module exports `PRODUCER_SOURCE_KIND` and `RETIRED_PLUGIN_KIND`, plus comprehensive v4 source schema validation tests.
+
 ## 0.1.15
 
 ### Bug Fixes
