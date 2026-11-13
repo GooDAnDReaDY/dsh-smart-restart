@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.17
+
+### Features & Hygiene
+- **Project documentation and deployment standards** (#53): Added canonical `index.md` (project architecture, module map, testing matrix), `AGENTS.md` (operational and architectural constraints), `deploy.sh` (deployment pre-flight and profile installation runner), and `.gitattributes` with `export-ignore` rules.
+- **Packaging hygiene and artifact prevention** (#54): Removed stray `.tgz` archives from checkout root. Added `scripts/pack-check.mjs` and integrated it into `npm run pretest` to strictly prevent stray archives in repository root and enforce package size limit (256 KiB). Added regression test suite in `test/pack-check.test.mjs`.
+
 ## 0.1.16
 
 ### Bug Fixes
