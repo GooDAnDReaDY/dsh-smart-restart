@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.18
+
+### Refactoring & Hygiene
+- **Sanitized public mirror tree and test segregation** (#55): Configured `.gitattributes` `export-ignore` rules for `docs/**`, `test/**`, and `scripts/**`. Added canonical mirror publication script `scripts/publish-github.sh` (`--check`, `--push`) publishing only product contents declared in `files` + README/LICENSE/CHANGELOG/manifests to GitHub mirror. Documented deliberate retention of `test/` suites and mocks in primary Gitea repository for CI/CD while excluding them from public distribution.
+- **Dead-export elimination and modular decomposition of lib/index.js** (#56): Integrated `parsePortOwner` into production port preflight health verification (`checkPort()`) in `lib/health.js`. Activated `RETIRED_PLUGIN_KIND` as defensive check in message delivery (`deliverTo()`). Decomposed monolithic `lib/index.js` (1245 lines) into dedicated modules: `lib/routes.js` (Web server HTTP routes), `lib/tools.js` (agent tools registration), `lib/pipeline.js` (chat restart command execution), and `lib/health.js` (health probes, preflight checks, system diagnostics), reducing `lib/index.js` to 598 lines and keeping all `lib/*.js` files below the 600-line threshold.
+
 ## 0.1.17
 
 ### Features & Hygiene
